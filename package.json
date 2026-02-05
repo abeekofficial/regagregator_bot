@@ -1,29 +1,28 @@
 {
-  "name": "telegram-taxi-bot",
+  "name": "regagregator_bot",
   "version": "1.0.0",
-  "description": "Professional Telegram Taxi Bot with referral system",
-  "main": "src/index.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "init-db": "node src/database/init.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
   },
-  "keywords": [
-    "telegram",
-    "bot",
-    "taxi",
-    "nodejs"
-  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abeekofficial/regagregator_bot.git"
+  },
+  "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/abeekofficial/regagregator_bot/issues"
+  },
+  "homepage": "https://github.com/abeekofficial/regagregator_bot#readme",
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
-    "sqlite3": "^5.1.7",
-    "dotenv": "^16.3.1",
-    "node-cron": "^3.0.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
-  },
-  "type": "commonjs"
+    "dotenv": "^17.2.4",
+    "mongoose": "^9.1.6",
+    "node-telegram-bot-api": "^0.67.0"
+  }
 }
