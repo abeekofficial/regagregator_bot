@@ -1,21 +1,19 @@
 const mongoose = require("mongoose");
 
-const OrderSchema = new mongoose.Schema(
-  {
-    passengerId: Number,
-    driverId: Number,
-
-    from: String,
-    to: String,
-
-    status: {
-      type: String,
-      default: "pending",
-    },
-
-    offeredDrivers: [Number],
+const orderSchema = new mongoose.Schema({
+  passengerId: Number,
+  from: String,
+  to: String,
+  price: Number,
+  status: {
+    type: String,
+    enum: ["pending", "accepted", "done", "cancelled"],
+    default: "pending",
   },
-  { timestamps: true },
-);
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
-module.exports = mongoose.model("Order", OrderSchema);
+module.exports = mongoose.model("Order", orderSchema);
