@@ -19,7 +19,7 @@ const createInlineKeyboard = () => {
   return {
     reply_markup: {
       inline_keyboard: regions.map((r) => [
-        { text: r.data, callback_data: `region_${r.code}` },
+        { text: r.name, callback_data: `region_${r.code}` },
       ]),
     },
   };

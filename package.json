@@ -1,28 +1,32 @@
 {
   "name": "regagregator_bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Taxi aggregator bot",
+  "main": "bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "dev": "cross-env NODE_ENV=development nodemon bot.js",
+    "prod": "cross-env NODE_ENV=production node bot.js",
+    "test": "cross-env NODE_ENV=development node bot.js",
+    "start": "npm run prod"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/abeekofficial/regagregator_bot.git"
   },
-  "keywords": [],
+  "keywords": [
+    "telegram",
+    "bot",
+    "taxi"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/abeekofficial/regagregator_bot/issues"
-  },
-  "homepage": "https://github.com/abeekofficial/regagregator_bot#readme",
   "dependencies": {
     "dotenv": "^17.2.4",
     "mongoose": "^9.1.6",
     "node-telegram-bot-api": "^0.67.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "nodemon": "^3.1.11"
   }
 }

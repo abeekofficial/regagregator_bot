@@ -1,79 +1,119 @@
+// ==================== handlers/orderAssign.js (TUZATILGAN) ====================
 const User = require("../models/user.model");
 const Order = require("../models/Order.model");
 
 module.exports = async function assignOrder(bot, orderId) {
-  const order = await Order.findById(orderId);
-  if (!order || order.status !== "pending") return;
+  try {
+    const order = await Order.findById(orderId);
+    if (!order || order.status !== "pending") return;
 
-  // 1️⃣ FROM → TO mos haydovchilar (role=driver)
-  let drivers = await User.find({ role: "driver" }).sort({ referralCount: -1 });
-  if (!drivers.length) return;
+    // Faqat active haydovchilar
+    let drivers = await User.find({
+      role: "driver",
+      isActive: true,
+    }).sort({ referralCount: -1 });
 
-  let currentIndex = 0;
-
-  const tryNextDriver = async () => {
-    if (currentIndex >= drivers.length) {
+    if (!drivers.length) {
       await Order.findByIdAndUpdate(orderId, { status: "cancelled" });
-      return;
+      return bot.sendMessage(
+        order.passengerId,
+        "❌ Afsuski, hozirda haydovchi topilmadi",
+      );
     }
 
-    const driver = drivers[currentIndex];
-    currentIndex++;
+    let currentIndex = 0;
+    let timeout;
+    let callbackListener;
 
-    // 2️⃣ Haydovchiga message
-    bot.sendMessage(
-      driver.telegramId,
-      `🚖 Yangi buyurtma:\n${order.from} ➝ ${order.to}\nQabul qilmoqchimisiz?`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Qabul qilaman", callback_data: `accept_${orderId}` },
-              { text: "❌ Rad etaman", callback_data: `reject_${orderId}` },
-            ],
-          ],
-        },
-      },
-    );
-
-    // 3️⃣ Timeout = 5s
-    const timeout = setTimeout(() => tryNextDriver(), 5000);
-
-    // 4️⃣ Callback listener
-    const callbackListener = async (query) => {
-      if (
-        query.data === `accept_${orderId}` &&
-        query.from.id === driver.telegramId
-      ) {
-        clearTimeout(timeout);
-        bot.removeListener("callback_query", callbackListener);
-
-        await Order.findByIdAndUpdate(orderId, {
-          driverId: driver.telegramId,
-          status: "accepted",
-        });
-
-        await bot.answerCallbackQuery(query.id, {
-          text: "✅ Buyurtmani qabul qildingiz",
-        });
-        bot.sendMessage(
+    const tryNextDriver = async () => {
+      if (currentIndex >= drivers.length) {
+        await Order.findByIdAndUpdate(orderId, { status: "cancelled" });
+        return bot.sendMessage(
           order.passengerId,
-          `🚖 Haydovchi topildi: ${driver.name} (${driver.carModel} - ${driver.carNumber})`,
+          "❌ Hech bir haydovchi buyurtmani qabul qilmadi",
         );
       }
 
-      if (
-        query.data === `reject_${orderId}` &&
-        query.from.id === driver.telegramId
-      ) {
-        clearTimeout(timeout);
-        bot.removeListener("callback_query", callbackListener);
-        tryNextDriver(); // keyingi haydovchiga o'tish
-      }
+      const driver = drivers[currentIndex];
+      currentIndex++;
+
+      // Haydovchiga xabar yuborish
+      await bot.sendMessage(
+        driver.telegramId,
+        `🚖 Yangi buyurtma:\n📍 ${order.from} ➝ ${order.to}\n\nQabul qilmoqchimisiz?`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Qabul qilaman",
+                  callback_data: `accept_${orderId}`,
+                },
+                { text: "❌ Rad etaman", callback_data: `reject_${orderId}` },
+              ],
+            ],
+          },
+        },
+      );
+
+      // Timeout
+      timeout = setTimeout(() => {
+        if (callbackListener) {
+          bot.removeListener("callback_query", callbackListener);
+        }
+        tryNextDriver();
+      }, 30000);
+
+      // Callback listener
+      callbackListener = async (query) => {
+        // Accept
+        if (
+          query.data === `accept_${orderId}` &&
+          query.from.id === driver.telegramId
+        ) {
+          clearTimeout(timeout);
+          bot.removeListener("callback_query", callbackListener);
+
+          await Order.findByIdAndUpdate(orderId, {
+            driverId: driver.telegramId,
+            status: "accepted",
+          });
+
+          await bot.answerCallbackQuery(query.id, {
+            text: "✅ Buyurtmani qabul qildingiz",
+          });
+
+          await bot.sendMessage(
+            order.passengerId,
+            `🚖 Haydovchi topildi!\n\n👤 ${driver.name}\n🚗 ${driver.carModel}\n🔢 ${driver.carNumber}\n📱 ${driver.phone}`,
+          );
+
+          await bot.sendMessage(
+            driver.telegramId,
+            `✅ Buyurtma qabul qilindi!\n\n📱 Yo'lovchi: ${order.passengerId}\n📍 ${order.from} ➝ ${order.to}`,
+          );
+        }
+        console.log("order", order);
+
+        // Reject
+        if (
+          query.data === `reject_${orderId}` &&
+          query.from.id === driver.telegramId
+        ) {
+          clearTimeout(timeout);
+          bot.removeListener("callback_query", callbackListener);
+          await bot.answerCallbackQuery(query.id, {
+            text: "❌ Rad etdingiz",
+          });
+          tryNextDriver();
+        }
+      };
+
+      bot.on("callback_query", callbackListener);
     };
 
-    bot.on("callback_query", callbackListener);
-  };
-
-  tryNextDriver();
+    tryNextDriver();
+  } catch (err) {
+    console.error("Order assign error:", err);
+  }
 };
