@@ -45,15 +45,58 @@ async function startBot() {
       });
     });
 
-    // 5️⃣ /start
+    // 5️⃣ /start - YANGILANGAN: AVVALGI FOYDALANUVCHILARNI TANISH
     bot.onText(/\/start(.*)/, async (msg) => {
       const chatId = msg.chat.id;
+      const username = msg.from.username || null;
       logger.info("START bosildi:", chatId);
 
       try {
         let user = await User.findOne({ telegramId: chatId });
+
+        // ✅ AGAR AVVAL RO'YXATDAN O'TGAN BO'LSA
+        if (user && user.role) {
+          // Username yangilash (agar o'zgargan bo'lsa)
+          if (username && user.username !== username) {
+            await User.findOneAndUpdate(
+              { telegramId: chatId },
+              { username: username },
+            );
+          }
+
+          // Rolga qarab menyuni ko'rsatish
+          if (user.role === "passenger") {
+            return bot.sendMessage(
+              chatId,
+              `🚕 Xush kelibsiz, ${user.name}!\n${
+                config.IS_DEVELOPMENT ? "⚠️ TEST BOT\n" : ""
+              }Siz yo'lovchi sifatida ro'yxatdan o'tgansiz.`,
+              {
+                reply_markup: {
+                  keyboard: [["🚖 Buyurtma berish"], ["👤 Profilim"]],
+                  resize_keyboard: true,
+                },
+              },
+            );
+          } else if (user.role === "driver") {
+            return bot.sendMessage(
+              chatId,
+              `🚕 Xush kelibsiz, ${user.name}!\n${
+                config.IS_DEVELOPMENT ? "⚠️ TEST BOT\n" : ""
+              }Siz haydovchi sifatida ro'yxatdan o'tgansiz.`,
+              {
+                reply_markup: {
+                  keyboard: [["📋 Buyurtmalar"], ["👤 Profilim"]],
+                  resize_keyboard: true,
+                },
+              },
+            );
+          }
+        }
+
+        // YANGI FOYDALANUVCHI
         if (!user) {
-          await User.create({ telegramId: chatId });
+          await User.create({ telegramId: chatId, username: username });
           logger.success("Yangi user yaratildi:", chatId);
         }
 
@@ -79,6 +122,7 @@ async function startBot() {
     bot.on("message", async (msg) => {
       const chatId = msg.chat.id;
       const text = msg.text;
+      const username = msg.from.username || null;
 
       try {
         if (text === "🧍 Yo'lovchi") {
@@ -124,7 +168,12 @@ async function startBot() {
           const phone = msg.contact ? msg.contact.phone_number : text;
           await User.findOneAndUpdate(
             { telegramId: chatId },
-            { role: "passenger", name: userState.name, phone: phone },
+            {
+              role: "passenger",
+              name: userState.name,
+              phone: phone,
+              username: username, // ✅ USERNAME SAQLASH
+            },
           );
           state.clear(chatId);
           logger.success("Yo'lovchi ro'yxatdan o'tdi:", {
@@ -207,6 +256,7 @@ async function startBot() {
     bot.on("callback_query", async (query) => {
       const chatId = query.message.chat.id;
       const data = query.data;
+      const username = query.from.username || null;
 
       try {
         const userState = state.get(chatId);
@@ -240,6 +290,7 @@ async function startBot() {
               carNumber: userState.carNumber,
               from: userState.from,
               to: userState.to,
+              username: username, // ✅ USERNAME SAQLASH
             },
           );
 

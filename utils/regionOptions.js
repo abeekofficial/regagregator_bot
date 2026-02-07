@@ -1,17 +1,17 @@
 const regions = [
-  { name: "Andijon viloyati", code: "andijan" },
-  { name: "Buxoro viloyati", code: "bukhara" },
-  { name: "Fargʻona viloyati", code: "fergana" },
-  { name: "Jizzax viloyati", code: "jizzakh" },
-  { name: "Xorazm viloyati", code: "khorezm" },
-  { name: "Namangan viloyati", code: "namangan" },
-  { name: "Navoiy viloyati", code: "navoiy" },
-  { name: "Qashqadaryo viloyati", code: "kashkadarya" },
-  { name: "Samarqand viloyati", code: "samarkand" },
-  { name: "Sirdaryo viloyati", code: "sirdarya" },
-  { name: "Surxondaryo viloyati", code: "surxondaryo" },
-  { name: "Toshkent viloyati", code: "tashkent_region" },
-  { name: "Toshkent shahri", code: "tashkent_city" },
+  { name: "Andijon v.", code: "andijan" },
+  { name: "Buxoro v.", code: "bukhara" },
+  { name: "Fargʻona v.", code: "fergana" },
+  { name: "Jizzax v.", code: "jizzakh" },
+  { name: "Xorazm v.", code: "khorezm" },
+  { name: "Namangan v.", code: "namangan" },
+  { name: "Navoiy v.", code: "navoiy" },
+  { name: "Qashqadaryo v.", code: "kashkadarya" },
+  { name: "Samarqand v.", code: "samarkand" },
+  { name: "Sirdaryo v.", code: "sirdarya" },
+  { name: "Surxondaryo v.", code: "surxondaryo" },
+  { name: "Toshkent v.", code: "tashkent_region" },
+  { name: "Toshkent sh.", code: "tashkent_city" },
   { name: "Qoraqalpogʻiston", code: "karakalpakstan" },
 ];
 
@@ -21,6 +21,7 @@ const createInlineKeyboard = () => {
       inline_keyboard: regions.map((r) => [
         { text: r.name, callback_data: `region_${r.code}` },
       ]),
+      resize_keyboard: true,
     },
   };
 };

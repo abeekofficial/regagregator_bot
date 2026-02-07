@@ -4,6 +4,7 @@ const UserSchema = new mongoose.Schema(
   {
     telegramId: { type: Number, unique: true },
     role: String,
+    username: String, // ✅ Telegram username
 
     name: String,
     phone: String,

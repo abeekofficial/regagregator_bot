@@ -1,4 +1,4 @@
-// ==================== handlers/orderAssign.js (TUZATILGAN) ====================
+// ==================== handlers/orderAssign.js (TO'LIQ YANGILANGAN) ====================
 const User = require("../models/user.model");
 const Order = require("../models/Order.model");
 
@@ -6,6 +6,16 @@ module.exports = async function assignOrder(bot, orderId) {
   try {
     const order = await Order.findById(orderId);
     if (!order || order.status !== "pending") return;
+
+    // ✅ Yo'lovchi ma'lumotlarini olish
+    const passenger = await User.findOne({ telegramId: order.passengerId });
+    if (!passenger) {
+      await Order.findByIdAndUpdate(orderId, { status: "cancelled" });
+      return bot.sendMessage(
+        order.passengerId,
+        "❌ Xatolik yuz berdi, qayta urinib ko'ring",
+      );
+    }
 
     // Faqat active haydovchilar
     let drivers = await User.find({
@@ -37,24 +47,44 @@ module.exports = async function assignOrder(bot, orderId) {
       const driver = drivers[currentIndex];
       currentIndex++;
 
+      // ✅ Haydovchiga to'liq ma'lumot bilan xabar yuborish
+      let orderMessage = `🚖 Yangi buyurtma!\n\n`;
+      orderMessage += `📍 ${order.from} ➝ ${order.to}\n\n`;
+
+      // Buyurtma turi
+      if (order.orderType === "passenger") {
+        orderMessage += `👥 Yo'lovchi tashish\n`;
+        orderMessage += `Yo'lovchilar soni: ${order.passengers} kishi\n\n`;
+      } else if (order.orderType === "cargo") {
+        orderMessage += `📦 Yuk tashish\n`;
+        orderMessage += `Og'irligi: ${order.cargoWeight} kg\n\n`;
+      }
+
+      // ✅ Yo'lovchi ma'lumotlari
+      orderMessage += `👤 BUYURTMACHI MA'LUMOTLARI:\n`;
+      orderMessage += `Ismi: ${passenger.name}\n`;
+
+      if (passenger.username) {
+        orderMessage += `Username: @${passenger.username}\n`;
+      }
+
+      orderMessage += `📱 Telefon: ${passenger.phone}\n\n`;
+      orderMessage += `❓ Buyurtmani qabul qilasizmi?`;
+
       // Haydovchiga xabar yuborish
-      await bot.sendMessage(
-        driver.telegramId,
-        `🚖 Yangi buyurtma:\n📍 ${order.from} ➝ ${order.to}\n\nQabul qilmoqchimisiz?`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Qabul qilaman",
-                  callback_data: `accept_${orderId}`,
-                },
-                { text: "❌ Rad etaman", callback_data: `reject_${orderId}` },
-              ],
+      await bot.sendMessage(driver.telegramId, orderMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Qabul qilaman",
+                callback_data: `accept_${orderId}`,
+              },
+              { text: "❌ Rad etaman", callback_data: `reject_${orderId}` },
             ],
-          },
+          ],
         },
-      );
+      });
 
       // Timeout
       timeout = setTimeout(() => {
@@ -83,17 +113,41 @@ module.exports = async function assignOrder(bot, orderId) {
             text: "✅ Buyurtmani qabul qildingiz",
           });
 
-          await bot.sendMessage(
-            order.passengerId,
-            `🚖 Haydovchi topildi!\n\n👤 ${driver.name}\n🚗 ${driver.carModel}\n🔢 ${driver.carNumber}\n📱 ${driver.phone}`,
-          );
+          // ✅ Yo'lovchiga haydovchi ma'lumotlarini yuborish
+          let driverInfo = `🚖 Haydovchi topildi!\n\n`;
+          driverInfo += `👤 ${driver.name}\n`;
 
-          await bot.sendMessage(
-            driver.telegramId,
-            `✅ Buyurtma qabul qilindi!\n\n📱 Yo'lovchi: ${order.passengerId}\n📍 ${order.from} ➝ ${order.to}`,
-          );
+          if (driver.username) {
+            driverInfo += `Username: @${driver.username}\n`;
+          }
+
+          driverInfo += `🚗 ${driver.carModel}\n`;
+          driverInfo += `🔢 ${driver.carNumber}\n`;
+          driverInfo += `📱 ${driver.phone}`;
+
+          await bot.sendMessage(order.passengerId, driverInfo);
+
+          // ✅ Haydovchiga buyurtma ma'lumotlarini yuborish
+          let confirmMessage = `✅ Buyurtma qabul qilindi!\n\n`;
+          confirmMessage += `📍 ${order.from} ➝ ${order.to}\n\n`;
+
+          if (order.orderType === "passenger") {
+            confirmMessage += `👥 Yo'lovchilar: ${order.passengers} kishi\n\n`;
+          } else {
+            confirmMessage += `📦 Yuk: ${order.cargoWeight} kg\n\n`;
+          }
+
+          confirmMessage += `👤 BUYURTMACHI:\n`;
+          confirmMessage += `Ismi: ${passenger.name}\n`;
+
+          if (passenger.username) {
+            confirmMessage += `Username: @${passenger.username}\n`;
+          }
+
+          confirmMessage += `📱 Telefon: ${passenger.phone}`;
+
+          await bot.sendMessage(driver.telegramId, confirmMessage);
         }
-        console.log("order", order);
 
         // Reject
         if (
