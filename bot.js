@@ -1,3 +1,4 @@
+// ========== bot.js (FULL FIXED VERSION) ==========
 const config = require("./config/environment");
 const features = require("./config/features");
 const logger = require("./utils/logger");
@@ -5,7 +6,8 @@ const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
 
 const User = require("./models/user.model");
-const state = require("./utils/state");
+const Session = require("./models/session.model");
+const { handleReferral } = require("./handlers/referal");
 
 mongoose.set("bufferCommands", false);
 
@@ -36,6 +38,9 @@ async function startBot() {
       console.log("");
     }
 
+    console.log("NODE_ENV:", process.env.NODE_ENV);
+    console.log("IS_DEVELOPMENT:", config.IS_DEVELOPMENT);
+
     // 4️⃣ Message logger
     bot.on("message", (msg) => {
       logger.debug("Xabar keldi:", {
@@ -45,23 +50,128 @@ async function startBot() {
       });
     });
 
-    // 5️⃣ /start
-    bot.onText(/\/start(.*)/, async (msg) => {
+    // ========== HELPER FUNCTIONS ==========
+
+    async function showMainMenu(bot, chatId, user) {
+      try {
+        const botInfo = await bot.getMe();
+        const botUsername = botInfo.username;
+
+        // ✅ AGAR REFERRAL CODE BO'LMASA - YARATISH
+        if (!user.referralCode) {
+          user.referralCode = `REF${user.telegramId}${Date.now().toString(36).toUpperCase()}`;
+          await user.save();
+        }
+
+        const referralLink = `https://t.me/${botUsername}?start=${user.referralCode}`;
+
+        let message = "";
+        let keyboard = [];
+
+        // ✅ PASSENGER
+        if (user.role === "passenger") {
+          message = `👋 Xush kelibsiz${user.name ? `, ${user.name}` : ""}!\n\n`;
+          message += `📊 Sizning statistikangiz:\n`;
+          message += `💰 Bonus: ${user.referralEarnings || 0} so'm\n`;
+          message += `👥 Taklif qilganlar: ${user.referralCount || 0} ta\n\n`;
+          message += `🎁 Referal havolangiz:\n${referralLink}`;
+
+          keyboard = [
+            ["🚖 Buyurtma berish"],
+            ["👤 Profilim", "💰 Balansim"],
+            ["📊 Tarixim"],
+          ];
+        }
+        // ✅ DRIVER
+        else if (user.role === "driver") {
+          message = `🚗 Xush kelibsiz${user.name ? `, ${user.name}` : ""}!\n\n`;
+          message += `📊 Sizning statistikangiz:\n`;
+          message += `⭐ Rating: ${user.rating?.toFixed(1) || 5.0}\n`;
+          message += `📦 Bajarilgan: ${user.completedOrders || 0} ta\n`;
+          message += `👥 Taklif qilganlar: ${user.referralCount || 0} ta\n\n`;
+
+          const priorityLevel =
+            (user.referralCount || 0) > 10 ? "Yuqori" : "O'rta";
+          message += `📈 Priority: ${user.referralCount || 0} (${priorityLevel})\n\n`;
+          message += `🎁 Referal havolangiz:\n${referralLink}`;
+
+          keyboard = [
+            ["📋 Buyurtmalar"],
+            ["👤 Profilim", "📊 Statistika"],
+            ["⭐ Reytingim"],
+          ];
+        }
+        // ✅ ADMIN
+        else if (config.ADMIN_IDS.includes(chatId)) {
+          message = `👑 ADMIN PANEL\n\nXush kelibsiz!`;
+          keyboard = [
+            ["📊 Statistika", "👥 Foydalanuvchilar"],
+            ["🚫 Bloklangan", "💬 Guruhlar"],
+            ["📈 Hisobotlar", "🔧 Sozlamalar"],
+          ];
+        }
+        // ✅ ROLE YO'Q
+        else {
+          message = `👋 Xush kelibsiz!\n\n`;
+          message += `⚠️ Siz hali ro'yxatdan o'tmangansiz.\n`;
+          message += `Kim sifatida kirmoqchisiz?`;
+
+          keyboard = [["🚕 Haydovchi", "🧍 Yo'lovchi"]];
+        }
+
+        bot.sendMessage(chatId, message, {
+          reply_markup: {
+            keyboard: keyboard,
+            resize_keyboard: true,
+          },
+        });
+      } catch (err) {
+        console.error("showMainMenu error:", err);
+        bot.sendMessage(chatId, "❌ Xatolik yuz berdi, /start ni qayta bosing");
+      }
+    }
+
+    // 5️⃣ /start - REFERAL SUPPORT BILAN
+    bot.onText(/\/start(.*)/, async (msg, match) => {
       const chatId = msg.chat.id;
+      const referralCode = match[1]?.trim();
       logger.info("START bosildi:", chatId);
 
       try {
         let user = await User.findOne({ telegramId: chatId });
+
+        // ✅ AGAR USER MAVJUD BO'LSA - MAIN MENU
+        if (user && user.role) {
+          return showMainMenu(bot, chatId, user);
+        }
+
+        // ✅ YANGI USER
         if (!user) {
-          await User.create({ telegramId: chatId });
+          user = await User.create({
+            telegramId: chatId,
+            username: msg.from.username,
+          });
           logger.success("Yangi user yaratildi:", chatId);
+        }
+
+        // ✅ REFERAL BILAN KELGAN BO'LSA
+        let referralInfo = "";
+        if (referralCode && referralCode.startsWith("REF")) {
+          const result = await handleReferral(bot, msg, referralCode);
+          if (result.success) {
+            if (result.inviterRole === "passenger") {
+              referralInfo = `\n\n🎁 ${result.inviterName} sizni taklif qildi!\n💰 Siz ro'yxatdan o'tgach, u 5000 so'm bonus oladi!`;
+            } else {
+              referralInfo = `\n\n🚗 Haydovchi ${result.inviterName} sizni taklif qildi!\nU buyurtma olishda yuqori prioritetga ega bo'ladi!`;
+            }
+          }
         }
 
         bot.sendMessage(
           chatId,
-          `🚕 Assalamu aleykum Taksi botga xush kelibsiz!\n${
-            config.IS_DEVELOPMENT ? "⚠️ TEST BOT\n" : ""
-          }Kim sifatida kirmoqchisiz?`,
+          `🚕 Assalamu aleykum! Taksi botga xush kelibsiz!${referralInfo}\n${
+            config.IS_DEVELOPMENT ? "\n⚠️ TEST BOT\n" : ""
+          }\nKim sifatida kirmoqchisiz?`,
           {
             reply_markup: {
               keyboard: [["🚕 Haydovchi", "🧍 Yo'lovchi"]],
@@ -75,32 +185,52 @@ async function startBot() {
       }
     });
 
-    // 6️⃣ ROLE TANLASH
+    // 6️⃣ ROLE TANLASH VA REGISTRATION
     bot.on("message", async (msg) => {
       const chatId = msg.chat.id;
       const text = msg.text;
 
       try {
+        // ========== ROLE TANLASH ==========
         if (text === "🧍 Yo'lovchi") {
-          state.set(chatId, { step: "PASSENGER_NAME", role: "passenger" });
+          await Session.deleteMany({ telegramId: chatId });
+
+          await Session.create({
+            telegramId: chatId,
+            step: "PASSENGER_NAME",
+            data: { role: "passenger" },
+          });
+
           logger.info("Yo'lovchi tanlandi:", chatId);
           return bot.sendMessage(chatId, "👤 Ism Familiyangizni kiriting:");
         }
 
         if (text === "🚕 Haydovchi") {
-          state.set(chatId, { step: "DRIVER_NAME", role: "driver" });
+          await Session.deleteMany({ telegramId: chatId });
+
+          await Session.create({
+            telegramId: chatId,
+            step: "DRIVER_NAME",
+            data: { role: "driver" },
+          });
+
           logger.info("Haydovchi tanlandi:", chatId);
           return bot.sendMessage(chatId, "👤 Ism Familiyangizni kiriting:");
         }
 
-        // YO'LOVCHI REGISTRATION
-        const userState = state.get(chatId);
-        if (!userState) return;
+        // ========== SESSION ORQALI ISHLASH ==========
+        let session = await Session.findOne({ telegramId: chatId });
+        if (!session) return;
 
-        if (userState.step === "PASSENGER_NAME") {
-          userState.name = text;
-          userState.step = "PASSENGER_PHONE";
-          state.set(chatId, userState);
+        // ========== YO'LOVCHI REGISTRATION ==========
+        if (session.step === "PASSENGER_NAME") {
+          session.data = session.data || {};
+          session.data.name = text;
+          session.step = "PASSENGER_PHONE";
+          await session.save();
+
+          console.log("✅ PASSENGER_NAME:", session.data.name);
+
           return bot.sendMessage(
             chatId,
             "📱 Telefon raqamingizni kiriting:\n(Masalan: +998901234567)",
@@ -120,34 +250,79 @@ async function startBot() {
           );
         }
 
-        if (userState.step === "PASSENGER_PHONE") {
+        if (session.step === "PASSENGER_PHONE") {
           const phone = msg.contact ? msg.contact.phone_number : text;
-          await User.findOneAndUpdate(
-            { telegramId: chatId },
-            { role: "passenger", name: userState.name, phone: phone },
+
+          session.data = session.data || {};
+          session.data.phone = phone;
+          await session.save();
+
+          console.log("✅ PASSENGER_PHONE:", session.data.phone);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
           );
-          state.clear(chatId);
-          logger.success("Yo'lovchi ro'yxatdan o'tdi:", {
-            id: chatId,
-            name: userState.name,
-          });
-          return bot.sendMessage(
-            chatId,
-            "✅ Ro'yxatdan o'tdingiz!\nEndi buyurtma berishingiz mumkin.",
+
+          // ✅ USER YANGILASH
+          const user = await User.findOneAndUpdate(
+            { telegramId: chatId },
             {
-              reply_markup: {
-                keyboard: [["🚖 Buyurtma berish"], ["👤 Profilim"]],
-                resize_keyboard: true,
+              $set: {
+                role: "passenger",
+                name: session.data.name,
+                phone: session.data.phone,
               },
             },
+            { new: true },
           );
+
+          await Session.deleteMany({ telegramId: chatId });
+
+          logger.success("Yo'lovchi ro'yxatdan o'tdi:", {
+            id: chatId,
+            name: user.name,
+          });
+
+          // ✅ REFERAL CODE
+          if (!user.referralCode) {
+            user.referralCode = `REF${user.telegramId}${Date.now().toString(36).toUpperCase()}`;
+            await user.save();
+          }
+
+          const botInfo = await bot.getMe();
+          const referralLink = `https://t.me/${botInfo.username}?start=${user.referralCode}`;
+
+          let welcomeMsg = `✅ RO'YXATDAN O'TDINGIZ!\n\n`;
+          welcomeMsg += `👤 Ism: ${user.name}\n`;
+          welcomeMsg += `📱 Telefon: ${user.phone}\n\n`;
+          welcomeMsg += `🎁 REFERAL DASTURI:\n`;
+          welcomeMsg += `Do'stlaringizni taklif qiling va har biri uchun 5000 so'm bonus oling!\n\n`;
+          welcomeMsg += `📎 Sizning havolangiz:\n${referralLink}\n\n`;
+          welcomeMsg += `💰 Joriy balans: ${user.referralEarnings || 0} so'm`;
+
+          bot.sendMessage(chatId, welcomeMsg, {
+            reply_markup: {
+              keyboard: [["🚖 Buyurtma berish"], ["👤 Profilim"]],
+              resize_keyboard: true,
+            },
+          });
+
+          return;
         }
 
-        // HAYDOVCHI REGISTRATION
-        if (userState.step === "DRIVER_NAME") {
-          userState.name = text;
-          userState.step = "DRIVER_PHONE";
-          state.set(chatId, userState);
+        // ========== HAYDOVCHI REGISTRATION ==========
+        if (session.step === "DRIVER_NAME") {
+          session.data = session.data || {};
+          session.data.name = text;
+          session.step = "DRIVER_PHONE";
+          await session.save();
+
+          console.log("✅ DRIVER_NAME:", session.data.name);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
+
           return bot.sendMessage(chatId, "📱 Telefon raqamingizni kiriting:", {
             reply_markup: {
               keyboard: [
@@ -163,31 +338,81 @@ async function startBot() {
           });
         }
 
-        if (userState.step === "DRIVER_PHONE") {
+        if (session.step === "DRIVER_PHONE") {
           const phone = msg.contact ? msg.contact.phone_number : text;
-          userState.phone = phone;
-          userState.step = "DRIVER_CAR_MODEL";
-          state.set(chatId, userState);
+
+          session.data = session.data || {};
+          session.data.phone = phone;
+          session.step = "DRIVER_PHOTO";
+          await session.save();
+
+          console.log("✅ DRIVER_PHONE:", session.data.phone);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
+
+          return bot.sendMessage(
+            chatId,
+            "📸 O'zingiz va mashinangiz rasmi bilan bitta RASM yuboring:",
+            { reply_markup: { remove_keyboard: true } },
+          );
+        }
+
+        if (session.step === "DRIVER_PHOTO") {
+          if (!msg.photo) {
+            return bot.sendMessage(chatId, "❌ Iltimos rasm yuboring!");
+          }
+
+          const fileId = msg.photo[msg.photo.length - 1].file_id;
+
+          session.data = session.data || {};
+          session.data.driverPhoto = fileId;
+          session.step = "DRIVER_CAR_MODEL";
+          await session.save();
+
+          console.log("✅ DRIVER_PHOTO:", session.data.driverPhoto);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
+
           return bot.sendMessage(
             chatId,
             "🚗 Mashina modelingizni kiriting:\n(Masalan: Chevrolet Lacetti)",
           );
         }
 
-        if (userState.step === "DRIVER_CAR_MODEL") {
-          userState.carModel = text;
-          userState.step = "DRIVER_CAR_NUMBER";
-          state.set(chatId, userState);
+        if (session.step === "DRIVER_CAR_MODEL") {
+          session.data = session.data || {};
+          session.data.carModel = text;
+          session.step = "DRIVER_CAR_NUMBER";
+          await session.save();
+
+          console.log("✅ DRIVER_CAR_MODEL:", session.data.carModel);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
+
           return bot.sendMessage(
             chatId,
             "🔢 Mashina raqamingizni kiriting:\n(Masalan: 01 A 777 AA)",
           );
         }
 
-        if (userState.step === "DRIVER_CAR_NUMBER") {
-          userState.carNumber = text;
-          userState.step = "DRIVER_FROM";
-          state.set(chatId, userState);
+        if (session.step === "DRIVER_CAR_NUMBER") {
+          session.data = session.data || {};
+          session.data.carNumber = text;
+          session.step = "DRIVER_FROM";
+          await session.save();
+
+          console.log("✅ DRIVER_CAR_NUMBER:", session.data.carNumber);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
+
           return bot.sendMessage(
             chatId,
             "📍 Qayerdan yo'lovchi olib ketasiz?",
@@ -196,6 +421,7 @@ async function startBot() {
         }
       } catch (err) {
         logger.error("Message handler error:", err);
+        console.error("❌ FULL ERROR:", err);
         bot.sendMessage(
           chatId,
           "❌ Xatolik yuz berdi, qaytadan urinib ko'ring",
@@ -209,14 +435,30 @@ async function startBot() {
       const data = query.data;
 
       try {
-        const userState = state.get(chatId);
-        if (!userState || userState.role !== "driver") return;
+        let session = await Session.findOne({ telegramId: chatId });
 
-        if (data.startsWith("region_") && userState.step === "DRIVER_FROM") {
+        // if (!session) {
+        //   await bot.answerCallbackQuery(query.id, {
+        //     text: "❌ Session topilmadi. /start bosing",
+        //     show_alert: true
+        //   });
+        //   return;
+        // }
+
+        // ========== DRIVER FROM ==========
+        if (data.startsWith("region_") && session.step === "DRIVER_FROM") {
           const regionCode = data.replace("region_", "");
-          userState.from = regionCode;
-          userState.step = "DRIVER_TO";
-          state.set(chatId, userState);
+
+          session.data = session.data || {};
+          session.data.from = regionCode;
+          session.step = "DRIVER_TO";
+          await session.save();
+
+          console.log("✅ DRIVER_FROM:", session.data.from);
+          console.log(
+            "📊 SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
+          );
 
           await bot.answerCallbackQuery(query.id);
           return bot.sendMessage(
@@ -226,52 +468,159 @@ async function startBot() {
           );
         }
 
-        if (data.startsWith("region_") && userState.step === "DRIVER_TO") {
+        // ========== DRIVER TO ==========
+        if (data.startsWith("region_") && session.step === "DRIVER_TO") {
           const regionCode = data.replace("region_", "");
-          userState.to = regionCode;
 
-          await User.findOneAndUpdate(
-            { telegramId: chatId },
-            {
-              role: "driver",
-              name: userState.name,
-              phone: userState.phone,
-              carModel: userState.carModel,
-              carNumber: userState.carNumber,
-              from: userState.from,
-              to: userState.to,
-            },
+          session.data = session.data || {};
+          session.data.to = regionCode;
+          await session.save();
+
+          console.log(
+            "📊 FINAL SESSION DATA:",
+            JSON.stringify(session.data, null, 2),
           );
 
-          state.clear(chatId);
+          // ✅ USER YANGILASH
+          const updateData = {
+            $set: {
+              role: session.data.role || "driver",
+              name: session.data.name,
+              phone: session.data.phone,
+              driverPhoto: session.data.driverPhoto,
+              carModel: session.data.carModel,
+              carNumber: session.data.carNumber,
+              from: session.data.from,
+              to: session.data.to,
+              isActive: true,
+            },
+          };
+
+          console.log("💾 UPDATE DATA:", JSON.stringify(updateData, null, 2));
+
+          const user = await User.findOneAndUpdate(
+            { telegramId: chatId },
+            updateData,
+            { new: true },
+          );
+
+          await Session.deleteMany({ telegramId: chatId });
+
+          console.log("✅ User saqlandi:", {
+            id: user.telegramId,
+            name: user.name,
+            phone: user.phone,
+            carModel: user.carModel,
+            carNumber: user.carNumber,
+            from: user.from,
+            to: user.to,
+          });
+
           logger.success("Haydovchi ro'yxatdan o'tdi:", {
             id: chatId,
-            name: userState.name,
+            name: user.name,
           });
 
           await bot.answerCallbackQuery(query.id);
-          return bot.sendMessage(
-            chatId,
-            "✅ Ro'yxatdan o'tdingiz!\nEndi buyurtmalarni qabul qila olasiz.",
-            {
-              reply_markup: {
-                keyboard: [["📋 Buyurtmalar"], ["👤 Profilim"]],
-                resize_keyboard: true,
-              },
+
+          // ✅ REFERAL CODE
+          if (!user.referralCode) {
+            user.referralCode = `REF${user.telegramId}${Date.now().toString(36).toUpperCase()}`;
+            await user.save();
+          }
+
+          const botInfo = await bot.getMe();
+          const referralLink = `https://t.me/${botInfo.username}?start=${user.referralCode}`;
+
+          let welcomeMsg = `✅ RO'YXATDAN O'TDINGIZ!\n\n`;
+          welcomeMsg += `👤 Ism: ${user.name}\n`;
+          welcomeMsg += `📱 Telefon: ${user.phone}\n`;
+          welcomeMsg += `🚙 Mashina: ${user.carModel}\n`;
+          welcomeMsg += `🔢 Raqam: ${user.carNumber}\n`;
+          welcomeMsg += `📍 Yo'nalish: ${user.from} → ${user.to}\n\n`;
+
+          welcomeMsg += `🚗 REFERAL DASTURI:\n`;
+          welcomeMsg += `Do'stlaringizni taklif qiling - prioritetingiz oshadi!\n\n`;
+          welcomeMsg += `📎 Sizning havolangiz:\n${referralLink}\n\n`;
+          welcomeMsg += `📊 Referallar: ${user.referralCount || 0} ta\n`;
+          welcomeMsg += `⭐ Rating: ${user.rating?.toFixed(1) || 5.0}\n\n`;
+          welcomeMsg += `⚠️ MUHIM:\n`;
+          welcomeMsg += `• 3 marta rad etsangiz - bloklanasiz\n`;
+          welcomeMsg += `• Rating < 3.0 - admin tekshiradi\n`;
+          welcomeMsg += `• Priority: Referal → Rating`;
+
+          return bot.sendMessage(chatId, welcomeMsg, {
+            reply_markup: {
+              keyboard: [["📋 Buyurtmalar"], ["👤 Profilim"]],
+              resize_keyboard: true,
             },
-          );
+          });
         }
       } catch (err) {
-        logger.error("Callback handler error:", err);
-        bot.sendMessage(chatId, "❌ Xatolik yuz berdi");
+        logger.error("Callback error:", err);
+        console.error("❌ FULL ERROR:", err);
+
+        await bot.answerCallbackQuery(query.id, {
+          text: "❌ Xatolik!",
+          show_alert: true,
+        });
+
+        bot.sendMessage(chatId, "❌ Xatolik, /start bosing");
       }
     });
 
-    // 8️⃣ ADMIN VA PASSENGER HANDLERLARNI IMPORT QILISH
+    // 8️⃣ PROFILIM
+    bot.onText(/👤 Profilim/, async (msg) => {
+      const chatId = msg.chat.id;
+
+      try {
+        const user = await User.findOne({ telegramId: chatId });
+
+        if (!user || !user.role) {
+          return bot.sendMessage(chatId, "❌ Ro'yxatdan o'tmangansiz!");
+        }
+
+        const botInfo = await bot.getMe();
+        const referralLink = `https://t.me/${botInfo.username}?start=${user.referralCode}`;
+
+        let profileMsg = `👤 PROFIL\n\n`;
+        profileMsg += `📝 Ism: ${user.name || "❌ Kiritilmagan"}\n`;
+        profileMsg += `📱 Telefon: ${user.phone || "❌ Kiritilmagan"}\n`;
+        profileMsg += `👥 Telegram: @${user.username || "Yo'q"}\n`;
+        profileMsg += `🔖 ID: ${user.telegramId}\n`;
+        profileMsg += `📅 Sana: ${user.createdAt.toLocaleDateString("uz-UZ")}\n\n`;
+
+        if (user.role === "driver") {
+          profileMsg += `🚗 HAYDOVCHI:\n`;
+          profileMsg += `🚙 Mashina: ${user.carModel || "❌"}\n`;
+          profileMsg += `🔢 Raqam: ${user.carNumber || "❌"}\n`;
+          profileMsg += `📍 ${user.from || "?"} → ${user.to || "?"}\n`;
+          profileMsg += `⭐ Rating: ${user.rating?.toFixed(1) || 5.0}\n`;
+          profileMsg += `📦 Buyurtmalar: ${user.completedOrders || 0}\n\n`;
+        }
+
+        profileMsg += `🎁 REFERAL:\n`;
+        profileMsg += `👥 Taklif qilganlar: ${user.referralCount || 0}\n`;
+
+        if (user.role === "passenger") {
+          profileMsg += `💰 Bonus: ${user.referralEarnings || 0} so'm\n`;
+        }
+
+        profileMsg += `\n📎 Havolangiz:\n${referralLink}`;
+
+        bot.sendMessage(chatId, profileMsg);
+      } catch (err) {
+        console.error("Profilim error:", err);
+        bot.sendMessage(chatId, "❌ Xatolik");
+      }
+    });
+
+    // 9️⃣ HANDLERS
     require("./handlers/admin")(bot);
     require("./handlers/passenger")(bot);
+    require("./handlers/group")(bot);
 
-    // 9️⃣ FEATURE MANAGEMENT (Faqat super admin uchun)
+    // 🔟 FEATURES
     const { isSuperAdmin } = require("./utils/isAdmin");
 
     bot.onText(/\/features/, async (msg) => {
@@ -284,7 +633,7 @@ async function startBot() {
 
       bot.sendMessage(
         chatId,
-        `🔧 FEATURES:\n\n${featureList}\n\nYoqish: /feature_on PAYMENT_SYSTEM\nO'chirish: /feature_off PAYMENT_SYSTEM`,
+        `🔧 FEATURES:\n\n${featureList}\n\n/feature_on NAME\n/feature_off NAME`,
       );
     });
 
@@ -306,7 +655,7 @@ async function startBot() {
       bot.sendMessage(chatId, `❌ ${featureName} o'chirildi`);
     });
 
-    // 🔟 Error handling
+    // 1️⃣1️⃣ ERROR HANDLING
     bot.on("polling_error", (error) => {
       logger.error("Polling error:", error.message);
     });

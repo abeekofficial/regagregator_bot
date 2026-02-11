@@ -1,7 +1,7 @@
 // ==================== handlers/admin.js ====================
 const Order = require("../models/Order.model");
 const User = require("../models/user.model");
-const isAdmin = require("../utils/isAdmin");
+const { isAdmin } = require("../utils/isAdmin");
 
 module.exports = (bot) => {
   bot.onText(/\/admin/, async (msg) => {
@@ -23,7 +23,6 @@ module.exports = (bot) => {
   bot.onText(/📊 Statistika/, async (msg) => {
     const chatId = msg.chat.id;
     if (!isAdmin(chatId)) return;
-
     try {
       const users = await User.countDocuments();
       const orders = await Order.countDocuments();
