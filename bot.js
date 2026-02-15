@@ -220,6 +220,8 @@ async function startBot() {
 
         // ========== SESSION ORQALI ISHLASH ==========
         let session = await Session.findOne({ telegramId: chatId });
+
+        // ✅ SESSION YO'Q BO'LSA - CHIQISH
         if (!session) return;
 
         // ========== YO'LOVCHI REGISTRATION ==========
@@ -437,13 +439,23 @@ async function startBot() {
       try {
         let session = await Session.findOne({ telegramId: chatId });
 
-        // if (!session) {
-        //   await bot.answerCallbackQuery(query.id, {
-        //     text: "❌ Session topilmadi. /start bosing",
-        //     show_alert: true
-        //   });
-        //   return;
-        // }
+        // ✅ SESSION YO'Q BO'LSA - XABAR BERISH
+        if (!session) {
+          await bot.answerCallbackQuery(query.id, {
+            text: "❌ Session topilmadi. /start bosing",
+            show_alert: true,
+          });
+          return;
+        }
+
+        // ✅ STEP YO'Q BO'LSA - XABAR BERISH
+        if (!session.step) {
+          await bot.answerCallbackQuery(query.id, {
+            text: "❌ Session step topilmadi. /start bosing",
+            show_alert: true,
+          });
+          return;
+        }
 
         // ========== DRIVER FROM ==========
         if (data.startsWith("region_") && session.step === "DRIVER_FROM") {

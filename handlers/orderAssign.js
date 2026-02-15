@@ -1,4 +1,4 @@
-// ========== handlers/orderAssign.js (TO'LIQ) ==========
+// ========== handlers/orderAssign.js (TO'LIQ TUZATILGAN) ==========
 const Order = require("../models/Order.model");
 const User = require("../models/user.model");
 const Group = require("../models/group.model");
@@ -185,20 +185,24 @@ async function offerToDriver(bot, order, driver) {
 // GURUHGA YUBORISH
 async function sendOrderToGroups(bot, order) {
   try {
+    // ✅ botInfo NI SHU YERDA OLISH
+    const botInfo = await bot.getMe();
+
     const groups = await Group.find({ isActive: true });
     const passenger = await User.findOne({ telegramId: order.passengerId });
 
-    if (!passenger) return;
+    if (!passenger) {
+      console.error("Passenger topilmadi");
+      return;
+    }
 
     for (const group of groups) {
       try {
         let message = `🚖 YANGI BUYURTMA!\n\n`;
         message += `📍 ${order.from} ➝ ${order.to}\n`;
-        message += `👥 ${order.passengers} kishi\n`;
-        message += `👤 ${passenger.name}\n`;
-        message += `📱 ${passenger.phone}\n`;
-        if (passenger.username) message += `@${passenger.username}\n`;
-        message += `\n⏰ Qabul qilish uchun tugmani bosing ⬇️`;
+        message += `👥 ${order.passengers} kishi\n\n`;
+        message += `⚠️ Eslatma: Buyurtmani qabul qilish uchun @${botInfo.username} dan haydovchi bo'lib ro'yxatdan o'ting.\n`;
+        message += `⏰ Qabul qilish uchun tugmani bosing ⬇️`;
 
         await bot.sendMessage(group.groupId, message, {
           reply_markup: {

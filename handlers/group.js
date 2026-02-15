@@ -36,8 +36,7 @@ module.exports = (bot) => {
           `• Buyurtmalarni qabul qilish uchun avval botga shaxsiy chatda kirish kerak\n` +
           `• Guruhda buyurtma berish mumkin EMAS\n` +
           `• Faqat ro'yxatdan o'tgan haydovchilar buyurtma qabul qilishi mumkin\n\n` +
-          `📱 Botga o'tish: @${botUsername}\n` +
-          `👉 Shaxsiy chatda /start bosing`,
+          `📱 Botga o'tish: @${botUsername}\n`,
       );
     } catch (err) {
       console.error("Guruhga qo'shilish xatosi:", err);
@@ -110,12 +109,7 @@ module.exports = (bot) => {
           } else {
             message += `📦 Yuk: ${order.cargoWeight} kg\n`;
           }
-
-          message += `\n👤 Buyurtmachi: ${passenger.name}\n`;
-          message += `📱 Telefon: ${passenger.phone}\n`;
-          if (passenger.username) {
-            message += `Telegram: @${passenger.username}\n`;
-          }
+          message = `⚠ Eslatma: Buyurtmani qabul qilish uchun @${botInfo.username} dan haydovchi bo'lib ro'yhatdan o'tding.`;
           message += `\n⏰ ${new Date().toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}`;
 
           await bot.sendMessage(group.groupId, message, {

@@ -38,7 +38,7 @@ async function handleReferral(bot, msg, referralCode) {
       inviter.referralEarnings += 5000; // 5000 so'm
       await bot.sendMessage(
         inviter.telegramId,
-        `🎉 Yangi foydalanuvchi sizning havolangiz orqali qo'shildi!\n💰 Bonus: 5000 so'm\n\n💵 Jami balans: ${inviter.referralEarnings} so'm`,
+        `🎉 Yangi foydalanuvchi sizning havolangiz orqali qo'shildi!`,
       );
     }
 
