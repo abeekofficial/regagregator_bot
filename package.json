@@ -18,7 +18,7 @@
     "bot",
     "taxi"
   ],
-  "author": "",
+  "author": "abeek",
   "license": "ISC",
   "dependencies": {
     "body-parser": "^2.2.2",

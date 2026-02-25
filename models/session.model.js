@@ -20,6 +20,10 @@ const SessionSchema = new mongoose.Schema(
       to: String,
       passengerCount: Number,
       cargoWeight: Number,
+      cargoDescription: String,
+      cargoPhotoId: String,
+      orderType: String,
+      pendingOrderId: String,
     },
 
     expiresAt: { type: Date, default: () => Date.now() + 3600000 },
